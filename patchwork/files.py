@@ -1,6 +1,8 @@
 import re
 
-from fabric.api import run, settings, hide, run
+from fabric.api import hide
+from fabric.api import run
+from fabric.api import settings
 
 
 def directory(d, user=None, group=None, mode=None, runner=run):
@@ -47,7 +49,13 @@ def contains(filename, text, exact=False, escape=True, runner=run):
             text = "^%s$" % text
     with settings(hide('everything'), warn_only=True):
         egrep_cmd = 'egrep "%s" "%s"' % (text, filename)
-        return runner(egrep_cmd, shell=False).succeeded
+        try:
+            # Use ``stderr`` arg to figure out whether local() was passed as a
+            # runner. local() has a different API, so we need to make difference
+            # somehow
+            return runner(egrep_cmd, shell=False, stderr=None).succeeded
+        except TypeError:
+            return runner(egrep_cmd, capture=True).succeeded
 
 
 def append(filename, text, partial=False, escape=True, runner=run):
@@ -66,16 +74,16 @@ def append(filename, text, partial=False, escape=True, runner=run):
     "append lines to a file" use case. You may override this and force partial
     searching (e.g. ``^<text>``) by specifying ``partial=True``.
 
-    Because ``text`` is single-quoted, single quotes will be transparently 
+    Because ``text`` is single-quoted, single quotes will be transparently
     backslash-escaped. This can be disabled with ``escape=False``.
     """
     # Normalize non-list input to be a list
     if isinstance(text, basestring):
         text = [text]
     for line in text:
-        regex = '^' + _escape_for_regex(line)  + ('' if partial else '$')
-        if (exists(filename, runner=runner) and line
-            and contains(filename, regex, escape=False, runner=runner)):
+        regex = '^' + _escape_for_regex(line) + ('' if partial else '$')
+        if (exists(filename, runner=runner) and line and contains(
+                filename, regex, escape=False, runner=runner)):
             continue
         line = line.replace("'", r"'\\''") if escape else line
         runner("echo '%s' >> %s" % (line, filename))
@@ -91,3 +99,16 @@ def _escape_for_regex(text):
     # Whereas single quotes should not be escaped
     regex = regex.replace(r"\'", "'")
     return regex
+
+
+def rm(path, runner=run):
+    cmd = 'rm -f %s' % path
+    with settings(hide('everything'), warn_only=True):
+        return runner(cmd).succeeded
+
+
+def rmdir(path, recursive=True, runner=run):
+    r = '-r' if recursive else ''
+    cmd = 'rm %s %s' % (r, path)
+    with settings(hide('everything'), warn_only=True):
+        return runner(cmd).succeeded
